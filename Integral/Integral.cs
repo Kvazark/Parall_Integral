@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.Intrinsics.Arm;
+using System.Threading;
 
 namespace Integral
 {
@@ -9,7 +12,7 @@ namespace Integral
         private readonly double _left;
         private readonly double _right;
         private readonly double _e; //погрешность
-        private readonly double _n; 
+        private readonly int _n; //количество отрезков
 
         private double _result;
 
@@ -23,7 +26,7 @@ namespace Integral
         }
 
         //Метод средних прямоугольников с точностью е
-        public double CalculationNoParall()
+        public double NoParallel()
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -44,19 +47,53 @@ namespace Integral
         }
 
 
-        public void CalculateIntegral(double left, double right, out double result)
+        public void CalculateIntegral(object index)
         {
-            var h = right - left / _n; //шаг разбиения отрезка
-            var center = left + h;
+            var i = (double[])index;
             
-            CalculateIntegral(left, center, out var s1);
-            CalculateIntegral(center, right, out var s2);
-
-            result = s1 + s2;
+            var left = i[0];
+            var right = i[1];
+            
+            double h = (right - left) / _n;
+           
+            var center = left + h;
+            if (right-left <= _e) _result += _func(center)*(right-left);
+            else
+            {
+                CalculateIntegral(new double[] {left, center});
+                CalculateIntegral(new double[] {center, right});
+            }
         }
 
-        public void Parall()
+        public double Parallel()
         {
+            //List<Thread> threads = new List<Thread>();
+            
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            int count = Environment.ProcessorCount;
+            
+            Thread[] threads = new Thread[count];
+            double[] results = new double[count];
+            
+            var weight = _right - _left;
+            var distanceThreads = weight / count;
+            
+            for (int i = 0; i < threads.Length; i++)
+            {
+                var left = _left + i * distanceThreads;
+                var right = _left + (i + 1) * distanceThreads;
+                threads[i] = new Thread(CalculateIntegral);
+                threads[i].Start(new double[] {left,right});
+            }
+            foreach (var thread in threads)
+            {
+                thread.Join();
+            }
+            
+            watch.Stop();
+
+            Console.WriteLine("Время вычисления в многопоточном режиме: " + watch.ElapsedMilliseconds);
+            return _result;
         }
     }
 }
